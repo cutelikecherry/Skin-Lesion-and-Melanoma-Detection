@@ -1,0 +1,14 @@
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore datasets and heavy model files
+*.zip
+*.h5
+*.pkl
+*.pt
+*.pth
+dataset/
+data/
+
