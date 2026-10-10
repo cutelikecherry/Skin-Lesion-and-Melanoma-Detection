@@ -1,10 +1,3 @@
-"""
-Model architecture, loading, and inference utilities.
-
-Uses a pretrained EfficientNet-B4 (or ResNet50) backbone with a custom
-classifier head for 7-class skin lesion classification.
-"""
-
 import os
 import pickle
 from dataclasses import dataclass
@@ -27,17 +20,6 @@ class PredictionResult:
 
 
 class SkinLesionClassifier(nn.Module):
-    """
-    EfficientNet-B4 / ResNet50 backbone with a custom classification head.
-
-    Args:
-        backbone_name: 'efficientnet_b4' or 'resnet50'.
-        num_classes: number of output classes.
-        pretrained: whether to load ImageNet-pretrained weights.
-        freeze_backbone: if True, freezes all backbone layers so only the
-            classifier head is trained (useful for fast fine-tuning on
-            small datasets).
-    """
 
     def __init__(self, backbone_name: str = "efficientnet_b4", num_classes: int = NUM_CLASSES,
                  pretrained: bool = True, freeze_backbone: bool = False):
@@ -69,10 +51,11 @@ class SkinLesionClassifier(nn.Module):
             nn.Linear(in_features, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.4),
+            nn.Dropout(0.5),
             nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
+            nn.Dropout(0.4),
             nn.Linear(128, num_classes),
         )
 
@@ -100,12 +83,7 @@ def build_model(backbone_name: str = "efficientnet_b4", pretrained: bool = True,
 
 def load_checkpoint(model: nn.Module, checkpoint_path: str,
                      device: Optional[str] = None) -> nn.Module:
-    """
-    Loads fine-tuned weights from a .pth/.pt checkpoint file into `model`.
-
-    Raises:
-        FileNotFoundError: if checkpoint_path does not exist.
-    """
+    
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found at '{checkpoint_path}'.")
 
@@ -117,19 +95,7 @@ def load_checkpoint(model: nn.Module, checkpoint_path: str,
 
 
 def save_lightweight_checkpoint(model: "SkinLesionClassifier", path: str):
-    """
-    Saves ONLY the trained classifier head (a few MB) plus small metadata
-    to a .pkl file -- deliberately excluding the backbone weights.
-
-    This is safe because, in the fast CPU workflow (extract_features.py +
-    train_head.py), the backbone is always frozen at its standard
-    pretrained ImageNet weights and never modified. Those weights are
-    reproducible anywhere via build_model(backbone_name, pretrained=True)
-    (torchvision downloads/caches them once), so there is no need to
-    duplicate ~75-100 MB of unchanged backbone weights into every
-    checkpoint. Use load_lightweight_checkpoint() to reconstruct the full
-    model from this file on any machine -- no dataset required.
-    """
+   
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     payload = {
         "format": "lightweight_head_v1",
@@ -142,18 +108,7 @@ def save_lightweight_checkpoint(model: "SkinLesionClassifier", path: str):
 
 
 def load_lightweight_checkpoint(path: str, device: Optional[str] = None) -> "SkinLesionClassifier":
-    """
-    Reconstructs a full SkinLesionClassifier from a .pkl file written by
-    save_lightweight_checkpoint(): rebuilds the (pretrained, frozen)
-    backbone matching `backbone_name`, then loads the trained classifier
-    head weights on top of it. Works on a machine with no dataset present
-    at all -- only an internet connection (or a torch hub cache) is
-    needed the first time, to fetch the standard ImageNet backbone weights.
-
-    Raises:
-        FileNotFoundError: if path does not exist.
-        ValueError: if the file isn't a recognized lightweight checkpoint.
-    """
+   
     if not os.path.exists(path):
         raise FileNotFoundError(f"Checkpoint not found at '{path}'.")
 
@@ -176,14 +131,7 @@ def load_lightweight_checkpoint(path: str, device: Optional[str] = None) -> "Ski
 
 
 def compute_risk_level(predicted_class: str, confidence: float) -> str:
-    """
-    Maps a predicted class + confidence to a High / Medium / Low risk banner.
-
-    High-risk classes (Melanoma, Basal Cell Carcinoma) always stay High
-    regardless of confidence, since a false negative on these is the most
-    clinically dangerous failure mode. Other classes are downgraded to
-    Medium when the model's confidence is low, to avoid false reassurance.
-    """
+   
     base_risk = RISK_MAP.get(predicted_class, "Low")
     if base_risk == "High":
         return "High"

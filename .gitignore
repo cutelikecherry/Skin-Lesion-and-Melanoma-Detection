@@ -11,4 +11,10 @@ env/
 *.pth
 dataset/
 data/
+ham10000_data
+ham10000_data/*.csv
+
+
+
+
 
